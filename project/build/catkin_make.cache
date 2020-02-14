@@ -1,2 +1,2 @@
-
+turtlebot_simulator/turtlebot_gazebo:turtlebot_simulator/turtlebot_simulator:turtlebot_simulator/turtlebot_stage:turtlebot_simulator/turtlebot_stdr
 -DCATKIN_DEVEL_PREFIX=/home/daniel/ROS/project/devel -DCMAKE_INSTALL_PREFIX=/home/daniel/ROS/project/install -G Unix Makefiles
