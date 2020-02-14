@@ -1,2 +1,2 @@
 
--DCATKIN_DEVEL_PREFIX=/home/alfonso/ROS/project/devel -DCMAKE_INSTALL_PREFIX=/home/alfonso/ROS/project/install -G Unix Makefiles
+-DCATKIN_DEVEL_PREFIX=/home/daniel/ROS/project/devel -DCMAKE_INSTALL_PREFIX=/home/daniel/ROS/project/install -G Unix Makefiles
