@@ -1,0 +1,4 @@
+# Directories ignored
+project/build/*
+
+# Files ignored
