@@ -16,30 +16,31 @@ class TurtleBotHandler:
         #Subscribe to camera of robot and receive data
         self.image_sub = rospy.Subscriber("robot1/camera/rgb/image_raw", Image, self.callback,  queue_size=1)
 
-def callback(self, data):
-    #Obtain images
-    try:
-        cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
-        cv.imshow("view", cv_image)
-        cv.waitKey(30)
-    except Exception as e:
-        print(e)
+    def callback(self, data):
+        #Obtain images
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            cv.imshow("view", cv_image)
+            cv.waitKey(30)
+        except Exception as e:
+            print(e)
 
-    (rows, cols, channels) = cv_image.shape
-    #Image size to big downsize
-    if cols > 60 and rows > 60:
-        cv.circle(cv_image, (50,50), 10, 255)
+        (rows, cols, channels) = cv_image.shape
+        #Image size to big downsize
+        if cols > 60 and rows > 60:
+            cv.circle(cv_image, (50,50), 10, 255)
 
-    cv.imshow("Image window", cv_image)
-    cv.waitKey(3)
-    #Resend image back
-    try:
-        self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
-        cv.imwrite('image_test', cv_image)
-    except CvBridgeError as e:
-        print(e)
+        cv.imshow("Image window", cv_image)
+        cv.waitKey(3)
+        #Resend image back
+        try:
+            self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
+            cv.imwrite('image_test', cv_image)
+        except CvBridgeError as e:
+            print(e)
 
-def main(args):
+
+def main():
     #Load turtlebothandler
     handler = TurtleBotHandler()
     rospy.init_node('TurtleBotHandler', anonymous=True)
@@ -50,6 +51,6 @@ def main(args):
         print("Shutting down")
 
     cv.destroyAllWindows()
+
 if __name__ == '__main__':
-    try:
-        main(sys.args)
+    main()
