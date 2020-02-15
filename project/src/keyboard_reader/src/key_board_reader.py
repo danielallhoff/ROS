@@ -41,11 +41,13 @@ class KeyBoardHandler:
         
         
 
-def main(args):    
+def main():    
     rospy.init_node('KeyBoardHandler', anonymous=True)
     handler = KeyBoardHandler()
     handler.driveKeyboard()
    
 if __name__ == '__main__':
     try:
-        main(sys.args)
+        main()
+    except Exception as e:
+        print(e)
