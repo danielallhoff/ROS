@@ -1,0 +1,8 @@
+<launch>
+
+  <node pkg="image_pub" name="image_pub" type="image_pub.py">
+  <node pkg="keyboard_reader" name="keyboard_reader" type="keyboard_reader.py">
+  <include file="$(find turtlebot_gazebo)/launch/turtlebot_world.launch" />
+
+
+</launch>
