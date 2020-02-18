@@ -14,17 +14,19 @@ class TurtleBotHandler:
         self.frame = 0
         self.path = "PATH/"
         #Send cv images back
-        self.image_pub = rospy.Publisher("image_topic_2", Image, queue_size=1)
+        self.image_pub = rospy.Publisher("image_topic_2", Image, queue_size=5)
         #Subscribe to camera of robot and receive data
         self.image_sub = rospy.Subscriber('/robot1/camera/rgb/image_raw', Image, self.callback)
+        #self.cmd_sub = rospy.Subscriber('cmd_key', String, queue_size = 1)
         print("Init")
     def callback(self, data):
         #Obtain images
         print("Callback call")
         try:
+            msg = rospy.wait_for_message('/cmd_key', String)
             cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")            
             cv.imshow("view", cv_image)
-            cv.imwrite(path + "frame_" + str(frame) + ".jpg", cv_image)
+            cv.imwrite(path + "frame_" + str(frame) + "_" + msg + ".jpg", cv_image)
             frame += 1
             cv.waitKey(30)
         except Exception as e:
