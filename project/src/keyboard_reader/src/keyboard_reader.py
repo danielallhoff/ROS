@@ -5,44 +5,57 @@ import rospy
 import cv2 as cv
 import sys
 from std_msgs.msg import String
+from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
+from cv_bridge import CvBridge, CvBridgeError
+
+
+
+
+
 class KeyBoardHandler:
     def __init__(self):
-        #pubDest = '/robot1/mobile_base/commands/velocity'
-        pubDest = 'cmd_vel'
+        
+        pubDest = '/robot1/mobile_base/commands/velocity'
+        #pubDest = 'cmd_vel'
         self.cmd_vel_pub = rospy.Publisher(pubDest,Twist, queue_size=1)
-        publishCommand = 'cmd_key'
-        self.cmd_key = rospy.Publisher(pubDest,String, queue_size=1)
+        
+        self.frame = 0
 
     def driveKeyboard(self):
         twist = Twist()
         while(1):
-            cmd_line = raw_input("Type a command and then press enter. Use '+' to move forward, 'l' to turn left, 'r' to turn right, '.' exit ")
-            char = cmd_line[0]
-            if((char != '+') and (char != 'l') and (char != 'r') and (char != '.')):
-                print("Unknown command " + cmd_line)
+            
+            cmd_line = raw_input("Type a command and then press enter. Use '+' to move forward, 'm' move backward, 'l' to turn left, 'r' to turn right, '.' exit ")
+            if cmd_line:
+                char = cmd_line[0]
+                if((char != '+') and (char != 'l') and (char != 'r') and (char != '.') and (char != 'm')):
+                    print("Unknown command " + cmd_line)
 
-            twist.linear.x = 0
-            twist.linear.y = 0
-            twist.linear.z = 0
-            twist.angular.x = 0
-            twist.angular.y = 0
-            twist.angular.z = 0
+                twist.linear.x = 0
+                twist.linear.y = 0
+                twist.linear.z = 0
+                twist.angular.x = 0
+                twist.angular.y = 0
+                twist.angular.z = 0
 
-            if char == '+':
-                twist.linear.x = 0.25
-            elif char == 'l':
-                twist.angular.z = 0.75
-                twist.linear.x = 0.25
-            elif char == 'r':
-                twist.angular.z = -0.75
-                twist.linear.x = 0.25
-            elif char == '.':
-                break
-            self.cmd_key.publish(char)
-            self.cmd_vel_pub.publish(twist)
-        
-        
+                if char == '+':
+                    twist.linear.x = 0.50
+                elif char == 'l':
+                    twist.angular.z = 0.75
+                    twist.linear.x = 0.25
+                elif char == 'r':
+                    twist.angular.z = -0.75
+                    twist.linear.x = 0.25
+                elif char == '.':
+                    break
+                elif char == 'm':
+                    twist.linear.x = -0.50
+                                
+                self.cmd_vel_pub.publish(twist)
+            else:
+                print("Empty command")
+                
 
 def main():    
     rospy.init_node('KeyBoardHandler', anonymous=True)
