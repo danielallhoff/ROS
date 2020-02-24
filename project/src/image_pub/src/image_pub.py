@@ -4,21 +4,24 @@
 import rospy
 import cv2 as cv
 import sys
+import os
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
-PATH = "/home/dfa17/Escritorio/ROS/project/src/images/"
+PATH = os.path.abspath('images')
+print('Saving path = {}'.format(PATH))
 
-class TurtleBotHandler:
+class ImageReader:
     def __init__(self):
         self.bridge = CvBridge()
-        
         #Send cv images back
         #self.image_pub = rospy.Publisher("image_topic_2", Image, queue_size=5)
         #Subscribe to camera of robot and receive data
-        self.image_sub = rospy.Subscriber('/robot1/camera/rgb/image_raw', Image, self.callback)
+        self.image_sub = rospy.Subscriber('/robot1/camera/rgb/image_raw', Image, self.callback, queue_size = 1)
+        self.image_pub = rospy.Publisher('image', Image)
         print("Init")
+
     def callback(self, data):
         #Obtain images
         print("Callback call")
@@ -39,21 +42,15 @@ class TurtleBotHandler:
 
         cv.imshow("Image window", cv_image)
         cv.waitKey(3)
-        ''' #Resend image back
-        try:
-            self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
-            cv.imwrite('image_test', cv_image)
-        except CvBridgeError as e:
-            print(e)
-        '''
-
+        image = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
+        image_pub.publish(image)
 def main():
     print("Start")
-    #Load turtlebothandler
-    handler = TurtleBotHandler()
+    #Load ImageReader
+    handler = ImageReader()
     
-    rospy.init_node('TurtleBotHandler', anonymous=True)
-    rate = rospy.Rate(30)
+    rospy.init_node('ImageReader', anonymous=True)
+    rate = rospy.Rate(2)
     try:
         print("Spin")
         rospy.spin()
