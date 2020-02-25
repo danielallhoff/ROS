@@ -22,7 +22,7 @@ class KeyBoardHandler:
 
     def driveKeyboard(self):
         twist = Twist()
-        cancel_future_calls = self.call_repeatedly(0.5, self.Timeout)
+        cancel_future_calls = self.call_repeatedly(1, self.Timeout)
         print('Before loop')
         while(1):
             print('Another loop iteration')

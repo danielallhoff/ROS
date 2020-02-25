@@ -19,7 +19,7 @@ class ImageReader:
         #self.image_pub = rospy.Publisher("image_topic_2", Image, queue_size=5)
         #Subscribe to camera of robot and receive data
         self.image_sub = rospy.Subscriber('/robot1/camera/rgb/image_raw', Image, self.callback, queue_size = 1)
-        self.image_pub = rospy.Publisher('image', Image)
+        self.image_pub = rospy.Publisher('image', Image, queue_size = 1)
         print("Init")
 
     def callback(self, data):
@@ -41,16 +41,16 @@ class ImageReader:
             cv.circle(cv_image, (50,50), 10, 255)
 
         cv.imshow("Image window", cv_image)
-        cv.waitKey(3)
+        cv.waitKey(900)
         image = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
-        image_pub.publish(image)
+        self.image_pub.publish(image)
 def main():
     print("Start")
     #Load ImageReader
     handler = ImageReader()
     
     rospy.init_node('ImageReader', anonymous=True)
-    rate = rospy.Rate(2)
+    rate = rospy.Rate(60)
     try:
         print("Spin")
         rospy.spin()
