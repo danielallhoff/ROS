@@ -18,7 +18,7 @@ class KeyBoardHandler:
         self.cmd_vel_pub = rospy.Publisher(pubDest,Twist, queue_size=1)
         self.frame = 0
         self.cmd_key_pub = rospy.Publisher('cmd_key',String, queue_size=1)
-        self.last_key = ' '
+        self.last_key = 'n'
 
     def driveKeyboard(self):
         twist = Twist()
@@ -32,7 +32,7 @@ class KeyBoardHandler:
                 self.last_key = char
                 if((char != '+') and (char != 'l') and (char != 'r') and (char != '.') and (char != 'm')):
                     print("Unknown command " + cmd_line)
-                    self.last_key = ' '
+                    self.last_key = 'n'
 
                 twist.linear.x = 0
                 twist.linear.y = 0
@@ -76,7 +76,7 @@ class KeyBoardHandler:
   
     def Timeout(self):
         self.cmd_key_pub.publish(self.last_key)
-        self.last_key = ' '
+        self.last_key = 'n'
         print('Timeout')
 
 

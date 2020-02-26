@@ -21,7 +21,7 @@ class TurtleBotHandler:
     def __init__(self):
         self.bridge = CvBridge()
         
-        self.model_movement = 
+        self.model_movement = "Lo que espera es un modelo de keras"
         
         #Subscribe to camera of robot and receive data
         self.image_sub = rospy.Subscriber("robot1/camera/rgb/image_raw", Image, self.callback,  queue_size=1)
@@ -53,7 +53,7 @@ class TurtleBotHandler:
             cv.circle(cv_image, (50,50), 10, 255)
 
         #Apply movement
-        pred = model_movement.predict(cv_image)
+        #pred = model_movement.predict(cv_image)
         
         num_class = np.argmax(pred, axis = 1)
 
@@ -86,7 +86,8 @@ class TurtleBotHandler:
 def main(args):
     #Load turtlebothandler
     #model = load_model(FILEPATH)
-    handler = TurtleBotHandler(model)
+    #handler = TurtleBotHandler(model)
+    handler = TurtleBotHandler()
     rospy.init_node('TurtleBotHandler', anonymous=True)
     rate = rospy.Rate(30)
     try:

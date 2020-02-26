@@ -35,6 +35,7 @@ PATH_IMAGES = os.path.abspath('images')
 def get_input_from_name(filename):
     return filename.split('_')[3].split('.')[0]
 '''
+
 def load_data():
   y = []
   X = []
