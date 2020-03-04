@@ -10,12 +10,13 @@ from cv_bridge import CvBridge, CvBridgeError
 import message_filters
 
 PATH = os.path.abspath('images')
+FRAME_FILE_PATH = PATH + '/last_frame.txt'
 PATH = PATH + "/images"
 print('Saving path = {}'.format(PATH))
 
 class Gatherer:
     def __init__(self):
-        self.frame = 0
+        self.frame = self.load_frames()
         self.bridge = CvBridge()
         self.dir_image_sub = message_filters.Subscriber('/robot1/camera/rgb/image_raw', Image)
         self.vel_sub = message_filters.Subscriber('/robot1/mobile_base/commands/velocity', Twist)
@@ -56,6 +57,19 @@ class Gatherer:
         cv.imwrite(PATH + "_frame_" + str(self.frame) + ".jpg", cv_image)   
         self.frame += 1
 
+    def load_frames(self):
+        number = 0
+        try:
+            with open(FRAME_FILE_PATH, 'r') as f:
+                number = int(f.readline())
+        except Exception:
+            pass
+        return number
+
+    def save_frames(self):
+        with open(FRAME_FILE_PATH, 'w') as out:
+            out.write(str(self.frame) + str('\n'))
+
 def main():
     handler = Gatherer()
     rospy.init_node('Gatherer', anonymous=True)
@@ -63,6 +77,7 @@ def main():
     try:
         rospy.spin()
     except KeyboardInterrupt:
+        handler.save_frames()
         print("Shutting down")
 
 if __name__ == '__main__':
