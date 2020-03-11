@@ -77,8 +77,11 @@ def main():
     try:
         rospy.spin()
     except KeyboardInterrupt:
-        handler.save_frames()
         print("Shutting down")
+    except:
+        pass
+    finally:
+        handler.save_frames()
 
 if __name__ == '__main__':
     try:
