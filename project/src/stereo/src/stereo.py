@@ -5,8 +5,10 @@ import numpy as np
 import cv2 as cv
 import sys
 import os
+import std_msgs.msg
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Point32
 from cv_bridge import CvBridge, CvBridgeError
 #Markers for points visualization: https://answers.ros.org/question/231781/rviz-markers-with-rospy/
 from sensor_msgs.msg import PointCloud
@@ -20,9 +22,9 @@ print('Saving path = {}'.format(PATH_SYNC))
 #Ros calibration node: http://wiki.ros.org/camera_calibration/Tutorials/StereoCalibration
 class Stereo:
     def __init__(self):
-        self.sub_trasR = message_filters.Subscriber("/robot1/trasera1/trasera1/rbg/image_raw", Image)
-        self.sub_trasL = message_filters.Subscriber("/robot1/trasera2/trasera2/rbg/image_raw", Image)
-        self.timeSync = message_filters.ApproximateTimeSynchronizer([self.sub_trasL, self.sub_trasR], queue_size=10,slop=0.1, allow_headerless=True)
+        self.sub_trasR = message_filters.Subscriber("/robot1/trasera1/trasera1/rgb/image_raw", Image)
+        self.sub_trasL = message_filters.Subscriber("/robot1/trasera2/trasera2/rgb/image_raw", Image)
+        self.timeSync = message_filters.ApproximateTimeSynchronizer([self.sub_trasL, self.sub_trasR], queue_size=10,slop=0.2, allow_headerless=True)
         self.timeSync.registerCallback(self.sync)
         self.height, self.width, self.channel = 640, 480, 3
         self.load_params()
@@ -51,17 +53,18 @@ class Stereo:
         header = std_msgs.msg.Header()
         header.stamp = rospy.Time.now()
         #Use frame_id of the sensor
-        header.frame_id = "pcl"
+        header.frame_id = "map"
         pointcloud.header = header
 
         verts = verts.reshape(-1,3)
-        colors = colors.reshape(-1,3)
-
-        for i in range(0,len(verts)):
-            pointcloud.points[i].x = verts[i][0]
-            pointcloud.points[i].y = verts[i][1]
-            pointcloud.points[i].z = verts[i][2]
+        #colors = colors.reshape(-1,3)
         
+        for i in range(0,len(verts)):
+            point = Point32()
+            point.x = verts[i][0]
+            point.y = verts[i][1]
+            point.z = verts[i][2]
+            pointcloud.points.append(point)
         self.stereo_cloud_publisher.publish(pointcloud)
 
 
@@ -70,12 +73,19 @@ class Stereo:
         #Downscale images via pyramids
         #imageL = cv.pyrDown(self.bridge.imgmsg_to_cv2(imageL, "bgr8"))
         #imageR = cv.pyrDown(self.bridge.imgmsg_to_cv2(imageR, "bgr8"))
-        
+
+        matL = self.bridge.imgmsg_to_cv2(imageL, desired_encoding='mono8')
+        arrayL = np.asarray(matL)
+
+        matR = self.bridge.imgmsg_to_cv2(imageR, desired_encoding='mono8')
+        arrayR = np.asarray(matR)
+
         #Rectify images with params of camera matrix(K) and distortion for each side of camera
-        imageL = cv.undistort(imageL, self.Kl, self.distl, None, self.newcameramtxL)
-        imageR = cv.undistort(imageR, self.Kr, self.distr, None, self.newcameramtxR)
+        imageL = cv.undistort(arrayL, self.Kl, self.distl, None, self.newcameramtxL)
+        imageR = cv.undistort(arrayR, self.Kr, self.distr, None, self.newcameramtxR)
+
         #Calculate disparity image
-        stereo = cv.createStereoBM(numDisparities=16, blockSize=15)
+        stereo = cv.StereoBM_create(numDisparities=16, blockSize=15)
         disparity = stereo.compute(imageL, imageR)
     
         f = 0.8 * self.width
@@ -87,11 +97,12 @@ class Stereo:
         #Obtain points
         points3d = cv.reprojectImageTo3D(disparity, Q)
         #Obtain colors
-        colors3d = cv.cvtColor(imageL, cv.COLOR_BGR2RGB)
+        #colors3d = cv.cvtColor(imageL, cv.COLOR_BGR2RGB)
         #Apply mask
         mask = disparity > disparity.min()
         out_points = points3d[mask]
-        out_colors = colors3d[mask]
+        #out_colors = colors3d[mask]
+        out_colors = []
         #cv.imshow('left', imageL)
         #cv.imshow('disparity', (disparity-min_disp)/num_disp)
         self.output(out_points, out_colors)
