@@ -1,5 +1,6 @@
 # Directories ignored
 project/build/*
+project/devel/*
 .vscode/*
 
 # Files ignored
