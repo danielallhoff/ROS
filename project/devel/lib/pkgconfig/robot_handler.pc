@@ -1,8 +1,0 @@
-prefix=/home/daniel/Desktop/ROS/project/devel
-
-Name: robot_handler
-Description: Description of robot_handler
-Version: 0.0.0
-Cflags: 
-Libs: -L${prefix}/lib 
-Requires: 
