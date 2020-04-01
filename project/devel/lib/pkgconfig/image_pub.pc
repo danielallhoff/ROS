@@ -1,0 +1,8 @@
+prefix=/home/daniel/Desktop/ROS/project/devel
+
+Name: image_pub
+Description: Description of image_pub
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

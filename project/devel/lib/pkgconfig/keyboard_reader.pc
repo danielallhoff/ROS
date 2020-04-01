@@ -1,0 +1,8 @@
+prefix=/home/daniel/Desktop/ROS/project/devel
+
+Name: keyboard_reader
+Description: Description of keyboard_reader
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

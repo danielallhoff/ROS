@@ -7,7 +7,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from keras import backend as K
 from keras.models import Model, load_model
-PATH = os.path.abspath('images')
+PATH = os.path.abspath('src')
 print('Saving path = {}'.format(PATH))
 
 IMG_HEIGHT = 28
@@ -20,7 +20,7 @@ class RobotHandler:
         #self.image_pub = rospy.Publisher("image_topic_2", Image, queue_size=5)
         #Subscribe to camera of robot and receive data
         self.image_sub = rospy.Subscriber('/robot1/camera/rgb/image_raw', Image, self.callback, queue_size = 1)
-        self.model = load_model(PATH)
+        self.model = load_model(PATH+"/model.h5")
         #pubDest = 'cmd_vel'
         self.cmd_vel_pub = rospy.Publisher('/robot1/mobile_base/commands/velocity', Twist, queue_size=1)
         print("Init")
@@ -60,6 +60,7 @@ def main():
         print("Shutting down")
 
     cv.destroyAllWindows()
+    print("FUNCIONA YA JODER")
 
 if __name__ == '__main__':
     main()
