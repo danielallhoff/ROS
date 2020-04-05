@@ -17,6 +17,15 @@ import message_filters
 PATH_SYNC = os.path.abspath('images_stereo')
 print('Saving path = {}'.format(PATH_SYNC))
 
+def save_image(image, name):
+        ''' Saves each image recieved'''
+        bridge = CvBridge()
+        cv_image = bridge.imgmsg_to_cv2(image, "bgr8")
+        save_mat_as_image(cv_image, name)
+
+def save_mat_as_image(mat, name):
+    cv.imwrite(PATH_SYNC + "/" + name + ".jpg", mat)
+
 #Right: /robot1/trasera1
 #Left: /robot1/trasera2
 #Ros calibration node: http://wiki.ros.org/camera_calibration/Tutorials/StereoCalibration
@@ -24,10 +33,11 @@ class Stereo:
     def __init__(self):
         self.sub_trasR = message_filters.Subscriber("/robot1/trasera1/trasera1/rgb/image_raw", Image)
         self.sub_trasL = message_filters.Subscriber("/robot1/trasera2/trasera2/rgb/image_raw", Image)
-        self.timeSync = message_filters.ApproximateTimeSynchronizer([self.sub_trasL, self.sub_trasR], queue_size=10,slop=0.2, allow_headerless=True)
+        self.timeSync = message_filters.ApproximateTimeSynchronizer([self.sub_trasL, self.sub_trasR], queue_size=10,slop=0.1, allow_headerless=True)
         self.timeSync.registerCallback(self.sync)
         self.height, self.width, self.channel = 640, 480, 3
         self.load_params()
+        self.rate = rospy.Rate(20)
         self.bridge = CvBridge()
         self.stereo_cloud_publisher = rospy.Publisher("robot1/stereo_cloud", PointCloud, queue_size=10)
     
@@ -43,6 +53,8 @@ class Stereo:
              [0.     ,   779.47028,   291.03151],
              [0.     ,     0.     ,     1.     ]])
         self.distr = np.float32([0.159904, 0.099552, 0.045093, 0.026736, 0.000000])
+
+        self.focal = 1086.569561
 
         self.newcameramtxL, self.roiL = cv.getOptimalNewCameraMatrix(self.Kl, self.distl, (self.width, self.height), 1, (self.width, self.height))
         self.newcameramtxR, self.roiR = cv.getOptimalNewCameraMatrix(self.Kr, self.distr, (self.width, self.height), 1, (self.width, self.height))
@@ -66,6 +78,7 @@ class Stereo:
             point.z = verts[i][2]
             pointcloud.points.append(point)
         self.stereo_cloud_publisher.publish(pointcloud)
+        #self.rate.sleep()
 
 
     #Search for K, R and t optimised
@@ -74,6 +87,9 @@ class Stereo:
         #imageL = cv.pyrDown(self.bridge.imgmsg_to_cv2(imageL, "bgr8"))
         #imageR = cv.pyrDown(self.bridge.imgmsg_to_cv2(imageR, "bgr8"))
 
+        save_image(imageL, "izquierda")
+        save_image(imageR, "derecha")
+
         matL = self.bridge.imgmsg_to_cv2(imageL, desired_encoding='mono8')
         arrayL = np.asarray(matL)
 
@@ -81,30 +97,45 @@ class Stereo:
         arrayR = np.asarray(matR)
 
         #Rectify images with params of camera matrix(K) and distortion for each side of camera
-        imageL = cv.undistort(arrayL, self.Kl, self.distl, None, self.newcameramtxL)
-        imageR = cv.undistort(arrayR, self.Kr, self.distr, None, self.newcameramtxR)
+        rectified_imageL = cv.undistort(arrayL, self.Kl, self.distl, None, self.newcameramtxL)
+        rectified_imageR = cv.undistort(arrayR, self.Kr, self.distr, None, self.newcameramtxR)
+
+        save_mat_as_image(rectified_imageL, "u_izquierda")
+        save_mat_as_image(rectified_imageR, "u_derecha")
 
         #Calculate disparity image
-        stereo = cv.StereoBM_create(numDisparities=16, blockSize=15)
-        disparity = stereo.compute(imageL, imageR)
-    
-        f = 0.8 * self.width
+        stereo = cv.StereoSGBM_create(numDisparities=64, blockSize=15,
+            P1 = 8*3*3**2,
+            P2 = 32*3*3**2,
+            disp12MaxDiff = 1,
+            uniquenessRatio = 10,
+            speckleWindowSize = 100,
+            speckleRange = 32)
+        disparity = stereo.compute(rectified_imageL, rectified_imageR).astype(np.float32) / 16.0
+
+        save_mat_as_image(disparity, "disparidad")
+        
+        f = 0.8 * self.focal 
 
         Q = np.float32([[1, 0, 0, -0.5*self.width],
                 [0,-1, 0,  0.5*self.height], # turn points 180 deg around x-axis,
                 [0, 0, 0,     -f], # so that y-axis looks up
                 [0, 0, 1,      0]])
+        #Q2 = np.float32([[1,0,0,0],
+        #        [0,-1,0,0],
+        #        [0,0,f*0.05,0],
+        #        [0,0,0,1]])
         #Obtain points
         points3d = cv.reprojectImageTo3D(disparity, Q)
         #Obtain colors
-        #colors3d = cv.cvtColor(imageL, cv.COLOR_BGR2RGB)
+        #colors3d = cv.cvtColor(cv.pyrDown(cv.imread(PATH_SYNC + "/u_izquierda.jpg")), cv.COLOR_BGR2RGB)
         #Apply mask
         mask = disparity > disparity.min()
         out_points = points3d[mask]
         #out_colors = colors3d[mask]
         out_colors = []
         #cv.imshow('left', imageL)
-        #cv.imshow('disparity', (disparity-min_disp)/num_disp)
+        #cv.imshow('disparity', (disparity-112-64)/64)
         self.output(out_points, out_colors)
 
 if __name__ == '__main__':
