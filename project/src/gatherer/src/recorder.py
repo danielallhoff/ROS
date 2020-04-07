@@ -17,7 +17,7 @@ print('Saving path = {}'.format(PATH))
 class Recorder:
     def __init__(self):
         self.bridge = CvBridge()
-        self.dir_image_sub = message_filters.Subscriber('/robot1/camera/rgb/image_raw', Image,self_save_image)
+        self.dir_image_sub = rospy.Subscriber('/robot1/camera/rgb/image_raw', Image, callback=self.save_image)
         self.frame = 0
 
     def save_image(self, data):
@@ -33,10 +33,6 @@ def main():
         rospy.spin()
     except KeyboardInterrupt:
         print("Shutting down")
-    except:
-        pass
-    finally:
-        handler.save_frames()
 
 if __name__ == '__main__':
     try:
