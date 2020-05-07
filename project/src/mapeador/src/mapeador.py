@@ -6,6 +6,8 @@ import ros_numpy
 import rospy
 import cv2 as cv
 import numpy as np
+import struct
+import ctypes
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 
@@ -13,7 +15,7 @@ class Mapeador:
     def __init__(self):
         self.vel_sub = rospy.Subscriber('/camera/depth/points',PointCloud2, self.callback)
         #Last point cloud extracted(filtered and keypoints)
-        self.last_point_cloud = None
+        self.last_key_points = None
         #World point cloud
         self.M = None
 
@@ -42,19 +44,20 @@ class Mapeador:
         return final
 
 
-    def extract_sift(self,cloud, cloud_normals):
+    def extract_harris(self,cloud):
         min_scale = 0.01
         n_octaves = 3
         n_scales_per_octave = 4
         min_contrast = 0.001
-        tree = cloud.make_kdtree()
-        sift = cloud_makeSIFTKeypoint()
-        sift.set_SearchMethod(tree)
-        sift.set_Scales(min_scale, n_octaves, n_scales_per_octave)
-        sift.set_MinimumContrast(0.00)
-        result = sift.compute()        
+        
+        harris3d = cloud.make_HarrisKeypoint3D()
+        #print(dir(harris3d))
+        harris3d.setRadius(0.01)
+        harris3d.set_RadiusSearch(0.01)
+        harris3d.set_NonMaxSupression(True)
+        result = harris3d.compute()        
         return result
-
+    
     def extract_normals(self,cloud):
         ne = cloud.make_NormalEstimation()
         tree = cloud.make_kdtree()
@@ -64,31 +67,55 @@ class Mapeador:
         cloud_normals = ne.compute()
 
         return cloud_normals
-
+    
     def pair_key_points(self, cloud, cloud_next):
         pass
-
+    #https://answers.ros.org/question/344096/subscribe-pointcloud-and-convert-it-to-numpy-in-python/
+    
+    '''def pc2_to_numpy(self, pointcloud):
+        gen = pc2.read_points(pointcloud, skip_nans = True)
+        int_data = list(gen)
+        xyz  = np.array([[0,0,0]])
+        rgb  = np.array([[0,0,0]])
+        for x in int_data:
+            test = x[3] 
+           
+            s = struct.pack('>f' ,test)
+            i = struct.unpack('>l',s)[0]
+            
+            pack = ctypes.c_uint32(i).value
+            r = (pack & 0x00FF0000)>> 16
+            g = (pack & 0x0000FF00)>> 8
+            b = (pack & 0x000000FF)
+            
+            xyz = np.append(xyz,[[x[0],x[1],x[2]]], axis = 0)
+            rgb = np.append(rgb,[[r,g,b]], axis = 0)
+        return xyz, rgb'''
+    
     def callback(self, pointcloud):
-        #Point cloud in ros point cloud format
-        pc = ros_numpy.numpify(pointcloud)
-        points = np.zeros((pc.shape[0],3))
-        points[:,0] = pc['x']
-        points[:,1] = pc['y']
-        points[:,2] = pc['z']
+        
+        #Obtain numpy points from pointcloud
+        xyz = ros_numpy.point_cloud2.pointcloud2_to_xyz_array(pointcloud)
+        #xyz, rgb = self.pc2_to_numpy(pointcloud)
+        
         #Point cloud in pcl format
-        p = pcl.PointCloud(np.array(points, dtype= np.float32))
+        p = pcl.PointCloud(np.array(xyz, dtype= np.float32))
 
         
-        if self.last_point_cloud is None:
-            self.last_point_cloud = p
+        if self.last_key_points is None:
+            self.last_key_points = p
         #Pair pointclouds
         else:
+            print("Calculando")
             #Extract keypoints new point cloud
             p_filtered = self.voxel_grid_filter(p)
-            #Extract normals
-            cloud_normals = self.extract_normals(p_filtered)
+            #Extract normals for sift
+            #cloud_normals = self.extract_normals(p_filtered)
             #Extract key points
-            key_points = self.extract_sift(p_filtered, cloud_normals)
+            key_points = self.extract_harris(p_filtered)
+            
+            #Pair last_point_cloud with key_points
+
             
 
 
