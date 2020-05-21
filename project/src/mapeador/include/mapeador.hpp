@@ -2,23 +2,6 @@
 #ifndef _MAPEADOR_H_
 #define _MAPEADOR_H_
 
-#include <ros/ros.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/point_types_conversion.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/sample_consensus/ransac.h>
-#include <pcl/sample_consensus/sac_model_line.h>
-#include <pcl/keypoints/harris_3d.h>
-#include <pcl/features/normal_3d.h>
-#include <pcl/features/pfh.h>
-#include <pcl/keypoints/sift_keypoint.h>
-#include <pcl/registration/correspondence_rejection_sample_consensus.h>
-#include <pcl/registration/icp.h>
-#include <pcl/registration/transformation_estimation_svd.h>
-#include <pcl/registration/transforms.h>
-#include <pcl/sample_consensus/method_types.h>
-
 constexpr char SUB_TARGET[] = "/camera/depth/points";
 constexpr char PUB_TARGET[] = "/mapper/cloud";
 
@@ -57,6 +40,7 @@ class Mapper{
         void findCorrespondences(const CloudFeatureType_t source, const CloudFeatureType_t target, std::vector<int>& correspondences);
         void PublishPointCloud(const CloudPoint3DIPtr_t);
         void extractDescriptors(CloudPoint3DIPtr_t input, CloudPoint3DIPtr_t keypoints, CloudFeatureType_t features);
+        CloudPoint3DIPtr_t RegistrarNubes(const CloudPoint3DIPtr_t& source, const CloudPoint3DIPtr_t& target);
     protected:
         ros::Publisher pub;
         ros::Subscriber sub;

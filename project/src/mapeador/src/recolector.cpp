@@ -29,13 +29,12 @@ void Callback(const pcl::PCLPointCloud2::Ptr cloud){
 
     pcl::io::savePCDFileASCII("/home/alfonso/ROS/pc" + FormatName(NUM_ZEROS, num_clouds) + ".pcd", *converted_cloud);
     ++num_clouds;
-    --iterations;
 }
 
 void bucle(unsigned iterations){
     ros::Rate rate(0.05f);
 
-    while(iterations){
+    while(iterations-num_clouds){
         ros::spinOnce();
         rate.sleep();
     }
