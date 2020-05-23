@@ -38,9 +38,9 @@ class Mapper{
         CloudPtr_t PC2toPC(Cloud2Ptr_t);
         Cloud2Ptr_t PCtoPC2(CloudPtr_t);
         void findCorrespondences(const CloudFeatureType_t source, const CloudFeatureType_t target, std::vector<int>& correspondences);
-        void PublishPointCloud(const CloudPoint3DIPtr_t);
+        
         void extractDescriptors(CloudPoint3DIPtr_t input, CloudPoint3DIPtr_t keypoints, CloudFeatureType_t features);
-        CloudPoint3DIPtr_t RegistrarNubes(const CloudPoint3DIPtr_t& source, const CloudPoint3DIPtr_t& target);
+        
     protected:
         ros::Publisher pub;
         ros::Subscriber sub;
@@ -48,6 +48,8 @@ class Mapper{
     public:
         Mapper(ros::NodeHandle& nh);
         void bucle();
+        void PublishPointCloud(const CloudPoint3DIPtr_t);
+        CloudPoint3DIPtr_t RegistrarNubes(const CloudPoint3DIPtr_t& source, const CloudPoint3DIPtr_t& target);
         
 };
 
