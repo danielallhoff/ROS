@@ -14,6 +14,7 @@
 #include <pcl/registration/transformation_estimation_svd.h>
 #include <pcl/registration/transforms.h>
 #include <pcl/sample_consensus/method_types.h>
+#include <pcl/io/pcd_io.h>
 #include <eigen32/Eigen/Dense>
 
 #include "mapeador.hpp"
@@ -21,7 +22,7 @@
 Mapper::Mapper(ros::NodeHandle& nh){
     srand(time(NULL));
     pub = nh.advertise<Cloud2_t>(PUB_TARGET, 1);
-    sub = nh.subscribe(SUB_TARGET, 1, &Mapper::PointCloudCallback, this);
+    //sub = nh.subscribe(SUB_TARGET, 1, &Mapper::PointCloudCallback, this);
 }
 
 CloudPoint3DIPtr_t ConvertCloud2To3DI(const Cloud2Ptr_t& source){
@@ -109,22 +110,22 @@ CloudPoint3DIPtr_t Mapper::RegistrarNubes(const CloudPoint3DIPtr_t& source, cons
     
     std::cout << "Applied initial transformation \n";
     //Determine final transformation and add to the final Point3DI
-    pcl::Registration<Point3DI, Point3DI>::Ptr registration(new pcl::IterativeClosestPoint<Point3DI, Point3DI>());
+    /*pcl::Registration<Point3DI, Point3DI>::Ptr registration(new pcl::IterativeClosestPoint<Point3DI, Point3DI>());
     registration->setInputSource(source_transformed_);
     registration->setInputTarget(target);
     registration->setMaxCorrespondenceDistance(0.05f);
     registration->setRANSACOutlierRejectionThreshold(0.05f);
     registration->setTransformationEpsilon(0.000001f);
-    registration->setEuclideanFitnessEpsilon(1);
-    registration->setMaximumIterations(50);
+    //registration->setEuclideanFitnessEpsilon(1);
+    registration->setMaximumIterations(1000);
     //Final cloud saved
     registration->align(*source_registered_);
     transformation_matrix = registration->getFinalTransformation();
     std::cout << "Applied final transformation \n";
-    
+    */
     // Reconstructs surface based on transformed and target cloud
     CloudPoint3DIPtr_t merged(new CloudPoint3DI_t);
-    *merged = *source_registered_;
+    *merged = *source_transformed_;
     //*merged = *source_transformed_;
     *merged += *target;
     
@@ -191,11 +192,65 @@ void Mapper::bucle(){
     }
 }
 
+void LoadClouds(std::vector<CloudPoint3DIPtr_t>& v){
+    const std::string files[] = {"/home/{NAME}/ROS/pc000.pcd",
+                             "/home/{NAME}/ROS/pc001.pcd",
+                             "/home/{NAME}/ROS/pc002.pcd",
+                             "/home/{NAME}/ROS/pc003.pcd",
+                             "/home/{NAME}/ROS/pc004.pcd",
+                             "/home/{NAME}/ROS/pc005.pcd",
+                             "/home/{NAME}/ROS/pc006.pcd",
+                             "/home/{NAME}/ROS/pc007.pcd",
+                             "/home/{NAME}/ROS/pc008.pcd",
+                             "/home/{NAME}/ROS/pc009.pcd",
+                             "/home/{NAME}/ROS/pc010.pcd",
+                             "/home/{NAME}/ROS/pc011.pcd",
+                             "/home/{NAME}/ROS/pc012.pcd",
+                             "/home/{NAME}/ROS/pc013.pcd",
+                             "/home/{NAME}/ROS/pc014.pcd",
+                             "/home/{NAME}/ROS/pc015.pcd",
+                             "/home/{NAME}/ROS/pc016.pcd",
+                             "/home/{NAME}/ROS/pc017.pcd",
+                             "/home/{NAME}/ROS/pc018.pcd",
+                             "/home/{NAME}/ROS/pc019.pcd",
+                             "/home/{NAME}/ROS/pc020.pcd",
+                             "/home/{NAME}/ROS/pc021.pcd",
+                             "/home/{NAME}/ROS/pc022.pcd",
+                             "/home/{NAME}/ROS/pc023.pcd",
+                             "/home/{NAME}/ROS/pc024.pcd",
+                             "/home/{NAME}/ROS/pc025.pcd",
+                             "/home/{NAME}/ROS/pc026.pcd",
+                             "/home/{NAME}/ROS/pc027.pcd"
+                            };
+
+    for(std::string s : files){
+        CloudPoint3DIPtr_t cloud(new CloudPoint3DI_t);
+        if(pcl::io::loadPCDFile<Point3DI>(s, *cloud) == -1){
+            std::cerr << "Error loading file " << s << '\n';
+            exit(-1); 
+        }
+        v.push_back(cloud);
+        std::cout << "Loaded " << v.size() << " clouds\n";
+    }
+}
+
 int main(int argc, char** argv){
     ros::init(argc, argv, "mapeador");
     ros::NodeHandle nh;
     Mapper mapper(nh);
-    mapper.bucle();
+
+    std::vector<CloudPoint3DIPtr_t> C;
+    std::cout << "Loading clouds\n";
+    LoadClouds(C);
+    std::cout << "Loaded all clouds\n";
+    CloudPoint3DIPtr_t ultima = C[0];
+
+    for(int i=1; i<C.size()-1;++i){
+        mapper.RegistrarNubes(C[i], ultima);
+        mapper.PublishPointCloud(ultima);
+        std::cout << "Registered " << i + 1 << " clouds\n";
+    }
+
     return 0;
 }
 

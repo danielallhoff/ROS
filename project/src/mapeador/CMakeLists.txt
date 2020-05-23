@@ -136,6 +136,11 @@ add_definitions(${PCL_DEFINITIONS})
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(${PROJECT_NAME}_node src/mapeador.cpp)
 
+add_executable(recolector_node src/recolector.cpp)
+target_link_libraries(recolector_node
+    ${catkin_LIBRARIES}
+    ${PCL_LIBRARIES}
+)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -206,3 +211,9 @@ target_link_libraries(${PROJECT_NAME}_node
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+add_executable(pairwise_node src/pairwise.cpp)
+target_link_libraries(pairwise_node
+    ${catkin_LIBRARIES}
+    ${PCL_LIBRARIES}
+)
