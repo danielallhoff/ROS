@@ -1,4 +1,5 @@
 #include <ros/ros.h>
+#include <boost/filesystem.hpp>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/point_types_conversion.h>
@@ -19,13 +20,15 @@
 
 #include "mapeador.hpp"
 
-Mapper::Mapper(ros::NodeHandle& nh){
+Mapper::Mapper(ros::NodeHandle& nh, bool useSub = true){
     srand(time(NULL));
     pub = nh.advertise<Cloud2_t>(PUB_TARGET, 1);
-    //sub = nh.subscribe(SUB_TARGET, 1, &Mapper::PointCloudCallback, this);
+    if(useSub) sub = nh.subscribe(SUB_TARGET, 1, &Mapper::PointCloudCallback, this);
+    merged = CloudPoint3DIPtr_t (new CloudPoint3DI_t());
+    last_keypoints_cloud = CloudPoint3DIPtr_t (new CloudPoint3DI_t());
 }
 
-CloudPoint3DIPtr_t ConvertCloud2To3DI(const Cloud2Ptr_t& source){
+CloudPoint3DIPtr_t Mapper::ConvertCloud2To3DI(const Cloud2Ptr_t& source){
     CloudPoint3DIPtr_t converted_cloud(new CloudPoint3DI_t());
     pcl::PointCloud<Point3DRGB>::Ptr nube_rgb(new pcl::PointCloud<Point3DRGB>());
 
@@ -35,20 +38,36 @@ CloudPoint3DIPtr_t ConvertCloud2To3DI(const Cloud2Ptr_t& source){
     return converted_cloud;   
 }
 
-CloudPoint3DIPtr_t Mapper::RegistrarNubes(const CloudPoint3DIPtr_t& source, const CloudPoint3DIPtr_t& target){
+void Mapper::CalculateCorrespondences(const std::vector<int>& st_correspondences, const std::vector<int>& ts_correspondences, pcl::CorrespondencesPtr& correspondences_){
+    std::vector<std::pair<unsigned, unsigned>> correspondences;
+    for(std::size_t cIdx = 0; cIdx < st_correspondences.size(); ++cIdx){
+        if(ts_correspondences[st_correspondences[cIdx]] == static_cast<int>(cIdx)){
+            correspondences.push_back(std::make_pair(cIdx, st_correspondences[cIdx]));
+        }
+    }
+
+    correspondences_->resize(correspondences.size());
+    for (std::size_t cIdx = 0; cIdx < correspondences.size(); ++cIdx) {
+        (*correspondences_)[cIdx].index_query = correspondences[cIdx].first;
+        (*correspondences_)[cIdx].index_match = correspondences[cIdx].second;
+    }
+}
+
+void Mapper::RegistrarNubes(CloudFeatureType_t& source_features, CloudPoint3DIPtr_t& source_keypoints, const CloudPoint3DIPtr_t& target){
     std::cout << "Detecting keypoints\n";
+    
+    // Filters both PointClouds
+    CloudPoint3DIPtr_t target_filtered(new CloudPoint3DI_t());
+    VoxelGridFilter(target, target_filtered);
+
     // Detects keypoints in both clouds
-    CloudPoint3DIPtr_t source_keypoints(new CloudPoint3DI_t());
     CloudPoint3DIPtr_t target_keypoints(new CloudPoint3DI_t());
-    detect_harris3d_keypoints(source, source_keypoints);
-    detect_harris3d_keypoints(target, target_keypoints);
+    detect_harris3d_keypoints(target_filtered, target_keypoints);
 
     std::cout << "Extracting features\n";        
     // Extracts keypoints into features
-    CloudFeatureType_t source_features(new pcl::PointCloud<FeatureType>);
     CloudFeatureType_t target_features(new pcl::PointCloud<FeatureType>);
-    extractDescriptors(source, source_keypoints, source_features);
-    extractDescriptors(target, target_keypoints, target_features);
+    extractDescriptors(target_filtered, target_keypoints, target_features);
     
     std::cout << "Find correspondences\n";
     // Finds correspondences between feature-type cloud
@@ -59,127 +78,60 @@ CloudPoint3DIPtr_t Mapper::RegistrarNubes(const CloudPoint3DIPtr_t& source, cons
     findCorrespondences(source_features, target_features, source_target_correspondences);
     std::cout << "Despues de source-target\n";
     
-
-    std::vector<std::pair<unsigned, unsigned>> correspondences;
-    for(std::size_t cIdx = 0; cIdx < source_target_correspondences.size(); ++cIdx){
-        if(target_source_correspondences[source_target_correspondences[cIdx]] == static_cast<int>(cIdx)){
-            correspondences.push_back(std::make_pair(cIdx, source_target_correspondences[cIdx]));
-        }
-    }
-
-    //Calculate correspondences
-    /*std::vector<std::pair<unsigned, unsigned>> correspondences;
-    findCorrespondences(last_keypoints_cloud, keypoints, correspondences);
-    std::cout << "Correspondences calculated: " << correspondences.size() << "\n";
-    CloudPoint3DIPtr_t source_transformed_(new CloudPoint3DI_t);
-    CloudPoint3DIPtr_t source_registered_(new CloudPoint3DI_t);
-    */
-
     //Convert correspondences to pcl::Correspondences
     pcl::CorrespondencesPtr correspondences_(new pcl::Correspondences);
-    correspondences_->resize(correspondences.size());
-    for (std::size_t cIdx = 0; cIdx < correspondences.size(); ++cIdx) {
-        (*correspondences_)[cIdx].index_query = correspondences[cIdx].first;
-        (*correspondences_)[cIdx].index_match = correspondences[cIdx].second;
-    }
+    CalculateCorrespondences(source_target_correspondences, target_source_correspondences, correspondences_);  
+    
     std::cout << "Correspondences calculated.Total correspondences: " << correspondences_->size() <<  "\n";
     //Filter correspondences using Random sample Consensus
-    pcl::registration::CorrespondenceRejectorSampleConsensus<Point3DI> rejectorRANSAC;
-    //rejectorRANSAC.setInputSource(last_keypoints_cloud);
-    rejectorRANSAC.setInputSource(source_keypoints);
-    //rejectorRANSAC.setInputTarget(keypoints);
-    rejectorRANSAC.setInputTarget(target_keypoints);
-    rejectorRANSAC.setInlierThreshold(0.01);
-    rejectorRANSAC.setMaximumIterations(1000);
-    rejectorRANSAC.setInputCorrespondences(correspondences_);
-    rejectorRANSAC.getCorrespondences(*correspondences_);
+    rejectCorrespondencesRansac(source_keypoints, target_keypoints, correspondences_);
+    
     std::cout << "Removed bad correspondences via ransac. Total correspondences: " << correspondences_->size() <<  "\n";
     
     //Determine initial Point3DRGB
     CloudPoint3DIPtr_t source_transformed_(new CloudPoint3DI_t);
     CloudPoint3DIPtr_t source_registered_(new CloudPoint3DI_t);
-    pcl::registration::TransformationEstimation<Point3DI, Point3DI>::Ptr transform_estimation(new pcl::registration::TransformationEstimationSVD<Point3DI, Point3DI>);
-    
-    Eigen::Matrix4f initial_transformation_matrix;
-    Eigen::Matrix4f transformation_matrix;
-    //Calculate transformation matrix requires intensity
-    //transform_estimation->estimateRigidTransformation(*last_keypoints_cloud, *keypoints, *correspondences_, initial_transformation_matrix);
-    transform_estimation->estimateRigidTransformation(*source_keypoints, *target_keypoints, *correspondences_, initial_transformation_matrix);
-    
-    pcl::transformPointCloud(*source, *source_transformed_, initial_transformation_matrix);
+    calculateInitialTransformation(source_keypoints, target_keypoints, source_transformed_,correspondences_);
     
     std::cout << "Applied initial transformation \n";
     //Determine final transformation and add to the final Point3DI
-    /*pcl::Registration<Point3DI, Point3DI>::Ptr registration(new pcl::IterativeClosestPoint<Point3DI, Point3DI>());
+    pcl::Registration<Point3DI, Point3DI>::Ptr registration(new pcl::IterativeClosestPoint<Point3DI, Point3DI>());
     registration->setInputSource(source_transformed_);
     registration->setInputTarget(target);
     registration->setMaxCorrespondenceDistance(0.05f);
     registration->setRANSACOutlierRejectionThreshold(0.05f);
     registration->setTransformationEpsilon(0.000001f);
-    //registration->setEuclideanFitnessEpsilon(1);
     registration->setMaximumIterations(1000);
     //Final cloud saved
-    registration->align(*source_registered_);
-    transformation_matrix = registration->getFinalTransformation();
+    registration->align(*merged);
     std::cout << "Applied final transformation \n";
-    */
-    // Reconstructs surface based on transformed and target cloud
-    CloudPoint3DIPtr_t merged(new CloudPoint3DI_t);
-    *merged = *source_transformed_;
-    //*merged = *source_transformed_;
-    *merged += *target;
-    
-    pcl::VoxelGrid<Point3DI> voxel_grid;
-    voxel_grid.setInputCloud(merged);
-    voxel_grid.setLeafSize(0.002f, 0.002f, 0.002f);
-    voxel_grid.setDownsampleAllData(true);
-    voxel_grid.filter(*merged);
-    std::cout << "Merged and filtered \n";
 
-    return merged;
+    source_features = target_features;
+    source_keypoints = target_keypoints;
+
 }
 
-// Source ->? Cloud
-// Target ->? last_cloud
-void Mapper::PointCloudCallback(const Cloud2Ptr_t cloud){
-    std::cout << "Received pointcloud, starting operations\n"; 
-    CloudPoint3DIPtr_t converted_cloud = ConvertCloud2To3DI(cloud);
-
-    //When already exists keypoints, pair them
-    if(last_keypoints_cloud != NULL){
-        CloudPoint3DIPtr_t registered_cloud = RegistrarNubes(converted_cloud, last_keypoints_cloud);
-        last_keypoints_cloud = registered_cloud;
-        PublishPointCloud(registered_cloud);
-    }
-    else{
-        last_keypoints_cloud = converted_cloud;
-    }
-
-    //Cloud2Ptr_t filtered_point_cloud = VoxelGridFilter(cloud);
-    /*CloudPoint3DIPtr_t keypoints(new CloudPoint3DI_t());
-    extract_harris3d_keypoints(cloud, keypoints);
-    PublishPointCloud(keypoints);
-    std::cout << "Keypoints extracted from cloud. Number of keypoints: " << keypoints->size() << "\n";
-*/
+//Calculate initial transformation and return the transformed point cloud in source_transformed
+void Mapper::calculateInitialTransformation(const CloudPoint3DIPtr_t source_keypoints, const CloudPoint3DIPtr_t target_keypoints, CloudPoint3DIPtr_t source_transformed, pcl::CorrespondencesPtr correspondences_){
+    Eigen::Matrix4f initial_transformation_matrix;
+    pcl::registration::TransformationEstimation<Point3DI, Point3DI>::Ptr transform_estimation(new pcl::registration::TransformationEstimationSVD<Point3DI, Point3DI>);
+    transform_estimation->estimateRigidTransformation(*source_keypoints, *target_keypoints, *correspondences_, initial_transformation_matrix);
+    pcl::transformPointCloud(*source_keypoints,*source_transformed,initial_transformation_matrix);
 }
 
 constexpr int k { 1 };
 //Find correspondences between both clouds. The result is a vector correspondences of int, associating which point from the cloud1 corresponds to which from cloud2
-void Mapper::findCorrespondences(const CloudFeatureType_t source,  const CloudFeatureType_t target, std::vector<int>& correspondences){
-    
+void Mapper::findCorrespondences(const CloudFeatureType_t source,  const CloudFeatureType_t target, std::vector<int>& correspondences){    
     correspondences.resize(source->size());
     
     // Search for near matches
-    //pcl::KdTreeFLANN<Point3DI> descriptor;
     pcl::KdTreeFLANN<FeatureType> descriptor;
     descriptor.setInputCloud(target);
 
     std::vector<int> k_indices(k);
     std::vector<float> k_squared_distances(k);
     for(std::size_t i = 0; i < source->size(); ++i){
-        //Find the nearest target point to source
         descriptor.nearestKSearch(*source, i, k,k_indices, k_squared_distances);
-        //correspondences.push_back(std::make_pair(i,k_indices[0]));
         correspondences[i] = k_indices[0];
     }
 }
@@ -192,83 +144,115 @@ void Mapper::bucle(){
     }
 }
 
-void LoadClouds(std::vector<CloudPoint3DIPtr_t>& v){
-    const std::string files[] = {"/home/{NAME}/ROS/pc000.pcd",
-                             "/home/{NAME}/ROS/pc001.pcd",
-                             "/home/{NAME}/ROS/pc002.pcd",
-                             "/home/{NAME}/ROS/pc003.pcd",
-                             "/home/{NAME}/ROS/pc004.pcd",
-                             "/home/{NAME}/ROS/pc005.pcd",
-                             "/home/{NAME}/ROS/pc006.pcd",
-                             "/home/{NAME}/ROS/pc007.pcd",
-                             "/home/{NAME}/ROS/pc008.pcd",
-                             "/home/{NAME}/ROS/pc009.pcd",
-                             "/home/{NAME}/ROS/pc010.pcd",
-                             "/home/{NAME}/ROS/pc011.pcd",
-                             "/home/{NAME}/ROS/pc012.pcd",
-                             "/home/{NAME}/ROS/pc013.pcd",
-                             "/home/{NAME}/ROS/pc014.pcd",
-                             "/home/{NAME}/ROS/pc015.pcd",
-                             "/home/{NAME}/ROS/pc016.pcd",
-                             "/home/{NAME}/ROS/pc017.pcd",
-                             "/home/{NAME}/ROS/pc018.pcd",
-                             "/home/{NAME}/ROS/pc019.pcd",
-                             "/home/{NAME}/ROS/pc020.pcd",
-                             "/home/{NAME}/ROS/pc021.pcd",
-                             "/home/{NAME}/ROS/pc022.pcd",
-                             "/home/{NAME}/ROS/pc023.pcd",
-                             "/home/{NAME}/ROS/pc024.pcd",
-                             "/home/{NAME}/ROS/pc025.pcd",
-                             "/home/{NAME}/ROS/pc026.pcd",
-                             "/home/{NAME}/ROS/pc027.pcd"
-                            };
+void Mapper::LoadClouds(std::vector<CloudPoint3DIPtr_t>& v, const char* const path){
+    boost::filesystem::path p(path);
+    boost::filesystem::directory_iterator iter(p), end_itr;
+    std::vector<std::string> files;
 
-    for(std::string s : files){
+    BOOST_FOREACH(boost::filesystem::path const& i, std::make_pair(iter, end_itr)){
+        if(is_regular_file(i)){
+            files.push_back(i.string());
+        }
+    }
+
+    std::sort(files.begin(), files.end());
+
+    for(std::string s: files){
         CloudPoint3DIPtr_t cloud(new CloudPoint3DI_t);
+        std::cout << "Reading file: " << s << '\n';
         if(pcl::io::loadPCDFile<Point3DI>(s, *cloud) == -1){
             std::cerr << "Error loading file " << s << '\n';
             exit(-1); 
         }
         v.push_back(cloud);
         std::cout << "Loaded " << v.size() << " clouds\n";
+        if(v.size() == 10) return;
+    }
+}
+
+void Mapper::RegistrarNubesGuardadas(const char* const directory_name){
+    std::vector<CloudPoint3DIPtr_t> C;
+    std::cout << "Loading clouds\n";
+    LoadClouds(C, directory_name);
+    std::cout << "Loaded all clouds\n";
+    
+    //Extract first keypoints
+    CloudFeatureType_t source_features(new pcl::PointCloud<FeatureType>);
+    CloudPoint3DIPtr_t source_filtered(new CloudPoint3DI_t());
+    
+    std::cout << "Processing first cloud\n";
+    VoxelGridFilter(C[0], source_filtered);
+    detect_harris3d_keypoints(source_filtered, last_keypoints_cloud);
+    extractDescriptors(source_filtered, last_keypoints_cloud, source_features);
+
+    for(int i=1; i<C.size()-1;++i){
+        
+        RegistrarNubes(source_features, last_keypoints_cloud, C[i]);
+        PublishPointCloud(merged);
+        std::cout << "Registered " << i + 1 << " clouds\n";
+    }
+}
+
+// Source ->? Cloud
+// Target ->? last_cloud
+void Mapper::PointCloudCallback(const Cloud2Ptr_t cloud){
+    std::cout << "Received pointcloud, starting operations\n"; 
+    CloudPoint3DIPtr_t converted_cloud = ConvertCloud2To3DI(cloud);
+    CloudPoint3DIPtr_t source_filtered(new CloudPoint3DI_t());
+    CloudFeatureType_t source_features(new pcl::PointCloud<FeatureType>);
+
+    //When already exists keypoints, pair them
+    if(last_keypoints_cloud != NULL){
+        RegistrarNubes(source_features, last_keypoints_cloud, converted_cloud);
+        PublishPointCloud(merged);
+    }
+    else{
+        last_keypoints_cloud = converted_cloud;
+        VoxelGridFilter(converted_cloud, source_filtered);
+        detect_harris3d_keypoints(source_filtered, last_keypoints_cloud);
     }
 }
 
 int main(int argc, char** argv){
-    ros::init(argc, argv, "mapeador");
-    ros::NodeHandle nh;
-    Mapper mapper(nh);
 
-    std::vector<CloudPoint3DIPtr_t> C;
-    std::cout << "Loading clouds\n";
-    LoadClouds(C);
-    std::cout << "Loaded all clouds\n";
-    CloudPoint3DIPtr_t ultima = C[0];
+    if(argc != 2 && argc != 3){
+        std::cout << "USAGE:\n\n\trosrun mapeador mapeador_node -[SP|LP] <pointcloud_directory>\n";
+        return -1;
+    }
 
-    for(int i=1; i<C.size()-1;++i){
-        mapper.RegistrarNubes(C[i], ultima);
-        mapper.PublishPointCloud(ultima);
-        std::cout << "Registered " << i + 1 << " clouds\n";
+    if(!std::strcmp("-SP", argv[1])){
+        ros::init(argc, argv, "mapeador");
+        ros::NodeHandle nh;
+        Mapper mapper(nh, true);
+        mapper.bucle();
+    }
+    else if(!std::strcmp("-LP", argv[1])){
+        if(argc != 3){
+            std::cerr << "Directory not specified.\n";
+            return -1;
+        }
+        else{
+            ros::init(argc, argv, "mapeador");
+            ros::NodeHandle nh;
+            Mapper mapper(nh, false);
+            mapper.RegistrarNubesGuardadas(argv[2]);
+        }
     }
 
     return 0;
 }
 
-
 ///////////////////////////
 ///// PRIVATE METHODS /////
 ///////////////////////////
-/*
-CloudPoint3DRGB_t Mapper::VoxelGridFilter(const CloudPoint3DRGB_t cloud){
-    CloudPoint3DRGB_t cloud_filtered(new CloudPoint3DRGB_t());
-    pcl::VoxelGrid<Point3DRGB> vgf;
+
+void Mapper::VoxelGridFilter(const CloudPoint3DIPtr_t& cloud, CloudPoint3DIPtr_t& filtered){
+    pcl::VoxelGrid<Point3DI> vgf;
 
     vgf.setInputCloud(cloud);
-    vgf.setLeafSize(0.01f, 0.01f, 0.01f);
-    vgf.filter(*cloud_filtered);
-
-    return cloud_filtered;
-}*/
+    vgf.setLeafSize(0.025f, 0.025f, 0.025f);
+    vgf.filter(*filtered);
+}
 
 void Mapper::PublishPointCloud(const CloudPoint3DIPtr_t cloud){
     Cloud2Ptr_t publish_cloud(new Cloud2_t());
@@ -277,33 +261,16 @@ void Mapper::PublishPointCloud(const CloudPoint3DIPtr_t cloud){
     pub.publish(*publish_cloud);
 }
 
-Cloud2Ptr_t Mapper::Ransac(const Cloud2Ptr_t cloud2){
-    CloudPtr_t cloud = PC2toPC(cloud2);
-    std::vector<int> inliers;
-    CloudPtr_t final_cloud;
-    pcl::SampleConsensusModelLine<Point3D>::Ptr model(new pcl::SampleConsensusModelLine<Point3D>(cloud));
-    pcl::RandomSampleConsensus<Point3D> ransac(model);
-
-    ransac.setDistanceThreshold(0.01f);
-    ransac.computeModel();
-    ransac.getInliers(inliers);
-    pcl::copyPointCloud(*cloud, inliers, *final_cloud);
-
-    return PCtoPC2(final_cloud);
-}
-
-//pcl::toPCLPointCloud2
-//pcl::fromPCLPointCloud2
-CloudPtr_t Mapper::PC2toPC(Cloud2Ptr_t source){
-    CloudPtr_t result(new Cloud_t());
-    pcl::fromPCLPointCloud2(*source, *result);
-    return result;
-}
-
-Cloud2Ptr_t Mapper::PCtoPC2(CloudPtr_t source){
-    Cloud2Ptr_t result(new Cloud2_t());
-    pcl::toPCLPointCloud2(*source, *result);
-    return result;
+void Mapper::rejectCorrespondencesRansac(const CloudPoint3DIPtr_t source_keypoints, const CloudPoint3DIPtr_t target_keypoints,  pcl::CorrespondencesPtr correspondences){
+    pcl::registration::CorrespondenceRejectorSampleConsensus<Point3DI> rejectorRANSAC;
+    //rejectorRANSAC.setInputSource(last_keypoints_cloud);
+    rejectorRANSAC.setInputSource(source_keypoints);
+    //rejectorRANSAC.setInputTarget(keypoints);
+    rejectorRANSAC.setInputTarget(target_keypoints);
+    rejectorRANSAC.setInlierThreshold(0.01);
+    rejectorRANSAC.setMaximumIterations(1000);
+    rejectorRANSAC.setInputCorrespondences(correspondences);
+    rejectorRANSAC.getCorrespondences(*correspondences);
 }
 
 void Mapper::extractDescriptors(CloudPoint3DIPtr_t input, CloudPoint3DIPtr_t keypoints, CloudFeatureType_t features){
@@ -327,30 +294,16 @@ void Mapper::extractDescriptors(CloudPoint3DIPtr_t input, CloudPoint3DIPtr_t key
     feature_extractor->compute(*features);
 }
 
-void Mapper::detect_harris3d_keypoints(const CloudPoint3DIPtr_t& input, const CloudPoint3DIPtr_t& keypoints){
+void Mapper::detect_harris3d_keypoints(CloudPoint3DIPtr_t& input, CloudPoint3DIPtr_t& keypoints){
     
-    //pcl::HarrisKeypoint3D<Point3DRGB, Point3DI>* harris3D = new pcl::HarrisKeypoint3D<Point3DRGB, Point3DI>();
-    //pcl::HarrisKeypoint3D<Point3DI, Point3DI>* harris3D = new pcl::HarrisKeypoint3D<Point3DI, Point3DI>();
     pcl::HarrisKeypoint3D<Point3DI, Point3DI>* harris3D = new pcl::HarrisKeypoint3D<Point3DI, Point3DI>(pcl::HarrisKeypoint3D<Point3DI, Point3DI>::HARRIS);
     harris3D->setNonMaxSupression(true);
     harris3D->setRadius(0.01f);
     harris3D->setRadiusSearch(0.01f);
-    
+    std::cout << "Halfway\n";
     pcl::Keypoint<Point3DI, Point3DI>::Ptr keypoint_detector;
     keypoint_detector.reset(harris3D);
     keypoint_detector->setInputCloud(input);
+    std::cout << "Computing\n";
     keypoint_detector->compute(*keypoints);
-
-    /*
-    std::cout << "Before conversion\n";
-    pcl::PointCloud<Point3DRGB>::Ptr nube_rgb(new pcl::PointCloud<Point3DRGB>());
-    pcl::PointCloud<Point3DI>::Ptr nube_I(new pcl::PointCloud<Point3DI>());
-    pcl::fromPCLPointCloud2(*input, *nube_rgb);
-
-    pcl::PointCloudXYZRGBtoXYZI(*nube_rgb, *nube_I);
-    std::cout << nube_I->size() << "\n";
-    std::cout << "After conversion\n";
-    harris3D->setInputCloud(nube_I);
-
-    harris3D->compute(*keypoints);*/
 }

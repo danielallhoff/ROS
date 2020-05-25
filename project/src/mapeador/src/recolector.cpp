@@ -45,7 +45,7 @@ int main(int argc, char** argv){
     ros::NodeHandle nh;
     ros::Subscriber sub = nh.subscribe("/camera/depth/points", 1, Callback);
     
-    bucle(30);
+    bucle(200);
     
     return 0;
 }
